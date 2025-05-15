@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Advanced HLS Video Player</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.10.0/video-js.min.css" rel="stylesheet">
+    <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -192,14 +192,12 @@
     </div>
 
     <!-- Core video.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.10.0/video.min.js"></script>
-    
-    <!-- HLS plugin -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-hls/5.15.0/videojs-contrib-hls.min.js"></script>
+    <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
     
     <!-- Quality selector plugins -->
-    <script src="https://cdn.jsdelivr.net/npm/videojs-contrib-quality-levels@3.0.0/dist/videojs-contrib-quality-levels.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/videojs-hls-quality-selector@1.1.4/dist/videojs-hls-quality-selector.min.js"></script>
+    <script src="https://unpkg.com/@videojs/http-streaming@2.16.2/dist/videojs-http-streaming.min.js"></script>
+    <script src="https://unpkg.com/videojs-contrib-quality-levels@2.1.0/dist/videojs-contrib-quality-levels.min.js"></script>
+    <script src="https://unpkg.com/videojs-hls-quality-selector@1.1.4/dist/videojs-hls-quality-selector.min.js"></script>
     
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -207,19 +205,15 @@
             var player = videojs('my-video', {
                 responsive: true,
                 fluid: true,
-                liveui: true,
+                playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2],
                 html5: {
                     nativeAudioTracks: false,
                     nativeVideoTracks: false,
                     nativeTextTracks: true,
                     hls: {
-                        overrideNative: true,
-                        enableLowInitialPlaylist: false,
-                        smoothQualityChange: true,
-                        bandwidth: 5000000 // Start with high bandwidth assumption
+                        overrideNative: true
                     }
                 },
-                playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2],
                 controlBar: {
                     children: [
                         'playToggle',
@@ -239,24 +233,12 @@
             });
             
             // Add quality selector plugin after player initialization
-            if (player.hlsQualitySelector) {
+            try {
                 player.hlsQualitySelector({
                     displayCurrentQuality: true
                 });
-            } else {
-                console.warn("HLS Quality Selector plugin not available");
-                // Load the quality selector plugin dynamically if needed
-                try {
-                    player.qualityLevels();
-                    player.hlsQualitySelector = videojs.getPlugin('hlsQualitySelector');
-                    if (player.hlsQualitySelector) {
-                        player.hlsQualitySelector({
-                            displayCurrentQuality: true
-                        });
-                    }
-                } catch (e) {
-                    console.error("Could not initialize quality selector:", e);
-                }
+            } catch(e) {
+                console.warn("Error initializing quality selector:", e);
             }
             
             // Elements for thumbnail preview
@@ -505,7 +487,7 @@
                         errorMsg = 'The video is not available or was removed.';
                         break;
                     case 5:
-                        errorMsg = 'The video is encrypted and we don\'t have the keys to decode it.';
+                        errorMsg = 'The video is encrypted and we don\\'t have the keys to decode it.';
                         break;
                     default:
                         errorMsg = player.error() ? player.error().message : 'Unknown playback error';
@@ -536,16 +518,6 @@
             window.addEventListener('resize', function() {
                 // Hide thumbnail preview on resize
                 hideThumbnail();
-            });
-            
-            // Add a hook for when quality levels change
-            player.on('qualitylevelschange', function() {
-                console.log('Quality levels changed');
-            });
-            
-            // Log when HLS segments are loaded
-            player.on('hlsSegmentLoaded', function() {
-                console.log('HLS segment loaded');
             });
         });
     </script>
