@@ -162,7 +162,7 @@
         </div>
         
         <div class="player-wrapper">
-            <video id="my-video" class="video-js vjs-big-play-centered vjs-fluid" controls preload="auto">
+            <video id="my-video" class="video-js vjs-big-play-centered vjs-fluid" controls preload="auto" crossorigin="anonymous">
                 <p class="vjs-no-js">
                     To view this video please enable JavaScript, and consider upgrading to a web browser that
                     <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>
@@ -209,11 +209,12 @@
                 html5: {
                     nativeAudioTracks: false,
                     nativeVideoTracks: false,
-                    nativeTextTracks: true,
+                    nativeTextTracks: false,
                     hls: {
                         overrideNative: true
                     }
                 },
+                crossOrigin: "anonymous",
                 controlBar: {
                     children: [
                         'playToggle',
@@ -224,8 +225,8 @@
                         'progressControl',
                         'liveDisplay',
                         'subtitlesButton',
+                        'captionsButton',
                         'audioTrackButton',
-                        'chaptersButton',
                         'playbackRateMenuButton',
                         'fullscreenToggle'
                     ]
@@ -410,6 +411,8 @@
                 // Reset player to clear any previous errors
                 player.reset();
                 
+                console.log("Loading URL:", url);
+                
                 // Set source and load with error handling
                 player.src({
                     src: url,
@@ -418,6 +421,15 @@
                 
                 // Explicitly trigger load
                 player.load();
+                
+                // Debug loaded text tracks
+                setTimeout(function() {
+                    var tracks = player.textTracks();
+                    console.log("Text tracks:", tracks);
+                    for (var i = 0; i < tracks.length; i++) {
+                        console.log("Track " + i + ":", tracks[i].kind, tracks[i].language, tracks[i].label);
+                    }
+                }, 2000);
                 
                 // Use a timeout to ensure the source has time to load before play
                 setTimeout(function() {
@@ -443,12 +455,12 @@
             
             // Check for URL parameter
             function getParameterByName(name, url = window.location.href) {
-                name = name.replace(/[[\]]/g, '\\$&');
+                name = name.replace(/[\\[\\]]/g, '\\$&');
                 var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
                     results = regex.exec(url);
                 if (!results) return null;
                 if (!results[2]) return '';
-                return decodeURIComponent(results[2].replace(/\+/g, ' '));
+                return decodeURIComponent(results[2].replace(/\\+/g, ' '));
             }
             
             // Check if there's a playlist URL in the query string
@@ -509,9 +521,22 @@
             player.on('loadedmetadata', function() {
                 // Check if we have text tracks (subtitles)
                 var tracks = player.textTracks();
-                if (tracks && tracks.length > 0) {
-                    console.log('Found ' + tracks.length + ' text tracks');
+                console.log('Loaded metadata, found ' + tracks.length + ' text tracks');
+                
+                // Enable the first subtitle track by default
+                for (var i = 0; i < tracks.length; i++) {
+                    var track = tracks[i];
+                    if (track.kind === 'subtitles' || track.kind === 'captions') {
+                        console.log('Enabling subtitle track:', track.label, track.language);
+                        track.mode = 'showing';
+                        break;
+                    }
                 }
+            });
+            
+            // Debug subtitle track events
+            player.textTracks().addEventListener('addtrack', function(e) {
+                console.log('Text track added:', e.track);
             });
             
             // Handle window resize
