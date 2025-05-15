@@ -1,11 +1,10 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Advanced HLS Video Player</title>
-    <link href="https://vjs.zencdn.net/8.9.0/video-js.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.10.0/video-js.min.css" rel="stylesheet">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -184,37 +183,43 @@
         
         <div class="info">
             <h3>Features:</h3>
-            <p>• <strong>Multiple Quality Levels:</strong> Automatic adaptive streaming based on your connection speed.</p>
-            <p>• <strong>Subtitles:</strong> Automatically displays available subtitle tracks in the video player.</p>
-            <p>• <strong>Multiple Audio Tracks:</strong> Switch between different audio languages if available.</p>
-            <p>• <strong>Timeline Thumbnails:</strong> Preview thumbnails when hovering over the timeline.</p>
-            <p>• <strong>URL Parameter:</strong> Use "?list=" to automatically load a video.</p>
+            <p>â€¢ <strong>Multiple Quality Levels:</strong> Automatic adaptive streaming based on your connection speed.</p>
+            <p>â€¢ <strong>Subtitles:</strong> Automatically displays available subtitle tracks in the video player.</p>
+            <p>â€¢ <strong>Multiple Audio Tracks:</strong> Switch between different audio languages if available.</p>
+            <p>â€¢ <strong>Timeline Thumbnails:</strong> Preview thumbnails when hovering over the timeline.</p>
+            <p>â€¢ <strong>URL Parameter:</strong> Use "?list=" to automatically load a video.</p>
         </div>
     </div>
 
-    <script src="https://vjs.zencdn.net/8.9.0/video.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/videojs-contrib-quality-levels@4.0.0/dist/videojs-contrib-quality-levels.min.js"></script>
+    <!-- Core video.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.10.0/video.min.js"></script>
+    
+    <!-- HLS plugin -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-hls/5.15.0/videojs-contrib-hls.min.js"></script>
+    
+    <!-- Quality selector plugins -->
+    <script src="https://cdn.jsdelivr.net/npm/videojs-contrib-quality-levels@3.0.0/dist/videojs-contrib-quality-levels.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/videojs-hls-quality-selector@1.1.4/dist/videojs-hls-quality-selector.min.js"></script>
     
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Initialize player
+            // Initialize player with correct HLS options
             var player = videojs('my-video', {
                 responsive: true,
                 fluid: true,
+                liveui: true,
                 html5: {
+                    nativeAudioTracks: false,
+                    nativeVideoTracks: false,
+                    nativeTextTracks: true,
                     hls: {
                         overrideNative: true,
-                        enableLowInitialPlaylist: true,
+                        enableLowInitialPlaylist: false,
                         smoothQualityChange: true,
                         bandwidth: 5000000 // Start with high bandwidth assumption
-                    },
-                    vhs: {
-                        overrideNative: true,
-                        limitRenditionByPlayerDimensions: false
                     }
                 },
-                playbackRates: [0.5, 1, 1.25, 1.5, 2],
+                playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2],
                 controlBar: {
                     children: [
                         'playToggle',
@@ -228,16 +233,31 @@
                         'audioTrackButton',
                         'chaptersButton',
                         'playbackRateMenuButton',
-                        'qualitySelector',
                         'fullscreenToggle'
                     ]
                 }
             });
             
-            // Add quality selector plugin
-            player.hlsQualitySelector({
-                displayCurrentQuality: true
-            });
+            // Add quality selector plugin after player initialization
+            if (player.hlsQualitySelector) {
+                player.hlsQualitySelector({
+                    displayCurrentQuality: true
+                });
+            } else {
+                console.warn("HLS Quality Selector plugin not available");
+                // Load the quality selector plugin dynamically if needed
+                try {
+                    player.qualityLevels();
+                    player.hlsQualitySelector = videojs.getPlugin('hlsQualitySelector');
+                    if (player.hlsQualitySelector) {
+                        player.hlsQualitySelector({
+                            displayCurrentQuality: true
+                        });
+                    }
+                } catch (e) {
+                    console.error("Could not initialize quality selector:", e);
+                }
+            }
             
             // Elements for thumbnail preview
             var thumbnailPreview = document.getElementById('thumbnailPreview');
@@ -266,44 +286,78 @@
                 thumbnailSprite = null;
                 thumbnailData = null;
                 
-                // Try to get the M3U8 playlist content
-                fetch(playlistUrl)
-                    .then(response => response.text())
-                    .then(content => {
-                        // Look for the custom thumbnail tag
-                        var thumbMatch = content.match(/#X-THUMBS:SPRITE="([^"]+)",DATA="([^"]+)"/);
-                        if (thumbMatch && thumbMatch.length >= 3) {
-                            var spriteUrl = thumbMatch[1];
-                            var dataUrl = thumbMatch[2];
+                // Try to get the M3U8 playlist content with CORS handling
+                fetch(playlistUrl, {
+                    method: 'GET',
+                    credentials: 'omit',
+                    headers: {
+                        'Accept': 'application/vnd.apple.mpegurl, application/x-mpegURL, */*'
+                    },
+                    mode: 'cors'
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok for playlist');
+                    }
+                    return response.text();
+                })
+                .then(content => {
+                    // Look for the custom thumbnail tag
+                    var thumbMatch = content.match(/#X-THUMBS:SPRITE="([^"]+)",DATA="([^"]+)"/);
+                    if (thumbMatch && thumbMatch.length >= 3) {
+                        var spriteUrl = thumbMatch[1];
+                        var dataUrl = thumbMatch[2];
+                        
+                        // Get the thumbnail data JSON with CORS handling
+                        return fetch(dataUrl, {
+                            method: 'GET',
+                            credentials: 'omit',
+                            mode: 'cors'
+                        })
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok for thumbnail data');
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            thumbnailData = data;
+                            thumbnailSprite = new Image();
                             
-                            // Get the thumbnail data JSON
-                            fetch(dataUrl)
-                                .then(response => response.json())
-                                .then(data => {
-                                    thumbnailData = data;
-                                    thumbnailSprite = new Image();
-                                    thumbnailSprite.src = spriteUrl;
-                                    
-                                    // Show preview on timeline hover
-                                    if (progressControl) {
-                                        progressControl.addEventListener('mousemove', showThumbnail);
-                                        progressControl.addEventListener('mouseout', hideThumbnail);
-                                    }
-                                })
-                                .catch(err => console.error('Error loading thumbnail data:', err));
-                        }
-                    })
-                    .catch(err => console.error('Error loading playlist:', err));
+                            // Handle CORS for images
+                            thumbnailSprite.crossOrigin = 'anonymous';
+                            thumbnailSprite.onload = function() {
+                                console.log('Thumbnail sprite loaded successfully');
+                                // Enable thumbnail preview only after successful load
+                                if (progressControl) {
+                                    progressControl.addEventListener('mousemove', showThumbnail);
+                                    progressControl.addEventListener('mouseout', hideThumbnail);
+                                }
+                            };
+                            thumbnailSprite.onerror = function(e) {
+                                console.error('Error loading thumbnail sprite:', e);
+                            };
+                            thumbnailSprite.src = spriteUrl;
+                        });
+                    } else {
+                        console.log('No thumbnail data found in playlist');
+                    }
+                })
+                .catch(err => {
+                    console.error('Error setting up thumbnails:', err);
+                });
             }
             
             // Show thumbnail preview on progress bar hover
             function showThumbnail(event) {
-                if (!thumbnailSprite || !thumbnailData) return;
+                if (!thumbnailSprite || !thumbnailData || !thumbnailData.positions || !thumbnailData.positions.length) return;
                 
                 // Calculate position in the video based on mouse position
                 var progressRect = progressControl.getBoundingClientRect();
                 var percent = (event.clientX - progressRect.left) / progressRect.width;
                 var duration = player.duration();
+                if (!duration || isNaN(duration)) return;
+                
                 var time = percent * duration;
                 
                 // Find the closest thumbnail
@@ -354,7 +408,7 @@
                 thumbnailPreview.style.display = 'none';
             }
             
-            // Function to load video from URL
+            // Function to load video from URL with improved error handling
             function loadVideo(url) {
                 if (!url) return;
                 
@@ -371,16 +425,32 @@
                 // Set up thumbnails
                 setupThumbnails(url);
                 
-                // Set source and load
+                // Reset player to clear any previous errors
+                player.reset();
+                
+                // Set source and load with error handling
                 player.src({
                     src: url,
                     type: 'application/x-mpegURL'
                 });
                 
+                // Explicitly trigger load
                 player.load();
-                player.play().catch(function(error) {
-                    console.log('Playback was prevented by browser:', error);
-                });
+                
+                // Use a timeout to ensure the source has time to load before play
+                setTimeout(function() {
+                    player.play().catch(function(error) {
+                        console.log('Playback was prevented by browser:', error);
+                        // Add user friendly error display
+                        errorMessage.textContent = 'Could not autoplay video. Please click play button.';
+                        errorOverlay.style.display = 'flex';
+                        
+                        // Auto-hide error after 3 seconds
+                        setTimeout(function() {
+                            errorOverlay.style.display = 'none';
+                        }, 3000);
+                    });
+                }, 500);
             }
             
             // Load button click handler
@@ -391,12 +461,12 @@
             
             // Check for URL parameter
             function getParameterByName(name, url = window.location.href) {
-                name = name.replace(/[\[\]]/g, '\\$&');
+                name = name.replace(/[\\[\\]]/g, '\\$&');
                 var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
                     results = regex.exec(url);
                 if (!results) return null;
                 if (!results[2]) return '';
-                return decodeURIComponent(results[2].replace(/\+/g, ' '));
+                return decodeURIComponent(results[2].replace(/\\+/g, ' '));
             }
             
             // Check if there's a playlist URL in the query string
@@ -413,18 +483,42 @@
                 }
             });
             
-            // Error handling
+            // Improved error handling
             player.on('error', function() {
                 console.error('Video playback error:', player.error());
                 
-                // Show error overlay
-                errorMessage.textContent = 'Error: ' + (player.error() ? player.error().message : 'Unknown error');
+                // Show error overlay with detailed message
+                var errorCode = player.error() ? player.error().code : 0;
+                var errorMsg = '';
+                
+                switch(errorCode) {
+                    case 1:
+                        errorMsg = 'The video was aborted. Please try reloading.';
+                        break;
+                    case 2:
+                        errorMsg = 'Network error. Please check your connection and try again.';
+                        break;
+                    case 3:
+                        errorMsg = 'Video format is not supported in your browser.';
+                        break;
+                    case 4:
+                        errorMsg = 'The video is not available or was removed.';
+                        break;
+                    case 5:
+                        errorMsg = 'The video is encrypted and we don\'t have the keys to decode it.';
+                        break;
+                    default:
+                        errorMsg = player.error() ? player.error().message : 'Unknown playback error';
+                }
+                
+                errorMessage.textContent = 'Error: ' + errorMsg;
                 errorOverlay.style.display = 'flex';
             });
             
             // Retry button click handler
             retryButton.addEventListener('click', function() {
                 if (currentUrl) {
+                    errorOverlay.style.display = 'none';
                     loadVideo(currentUrl);
                 }
             });
@@ -442,6 +536,16 @@
             window.addEventListener('resize', function() {
                 // Hide thumbnail preview on resize
                 hideThumbnail();
+            });
+            
+            // Add a hook for when quality levels change
+            player.on('qualitylevelschange', function() {
+                console.log('Quality levels changed');
+            });
+            
+            // Log when HLS segments are loaded
+            player.on('hlsSegmentLoaded', function() {
+                console.log('HLS segment loaded');
             });
         });
     </script>
